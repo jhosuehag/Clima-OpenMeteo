@@ -3,12 +3,13 @@ package com.jhosue.weather.extreme.presentation.widget
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.widget.RemoteViews
 import com.jhosue.weather.extreme.R
 import com.jhosue.weather.extreme.presentation.MainActivity
-import com.jhosue.weather.extreme.presentation.components.WeatherUtils
 
 class WeatherWidget : AppWidgetProvider() {
 
@@ -21,49 +22,48 @@ class WeatherWidget : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             updateAppWidget(context, appWidgetManager, appWidgetId)
         }
+        super.onUpdate(context, appWidgetManager, appWidgetIds)
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        if (AppWidgetManager.ACTION_APPWIDGET_UPDATE == intent.action) {
+            val appWidgetManager = AppWidgetManager.getInstance(context)
+            val thisAppWidget = ComponentName(context.packageName, WeatherWidget::class.java.name)
+            val appWidgetIds = appWidgetManager.getAppWidgetIds(thisAppWidget)
+            onUpdate(context, appWidgetManager, appWidgetIds)
+            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.widget_list_view)
+        }
     }
 
     companion object {
-        private const val PREFS_NAME = "weather_prefs"
-        private const val KEY_LOCATION = "last_location"
-        private const val KEY_TEMP = "last_temp"
-        private const val KEY_DESC = "last_desc"
-        private const val KEY_ICON_CODE = "last_icon_code"
-        private const val KEY_IS_DAY = "last_is_day"
 
         internal fun updateAppWidget(
             context: Context,
             appWidgetManager: AppWidgetManager,
             appWidgetId: Int
         ) {
-            // 1. Get SharedPreferences
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val locationName = prefs.getString(KEY_LOCATION, "Sin datos")
-            val temp = prefs.getFloat(KEY_TEMP, 0f)
-            val desc = prefs.getString(KEY_DESC, "Toque para actualizar")
-            val iconCode = prefs.getInt(KEY_ICON_CODE, 0)
-            val isDay = prefs.getBoolean(KEY_IS_DAY, true)
-
-            // 2. Setup Layout
+            // 1. Setup Layout
             val views = RemoteViews(context.packageName, R.layout.widget_layout)
             
-            views.setTextViewText(R.id.widget_location_name, locationName)
-            views.setTextViewText(R.id.widget_temperature, "${temp.toInt()}°")
-            views.setTextViewText(R.id.widget_description, desc)
+            // 2. Setup Service Intent for ListView
+            val intent = Intent(context, WeatherWidgetService::class.java).apply {
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+            }
             
-            // Icon Logic
-            val iconRes = WeatherUtils.getIconResourceForWeatherCode(iconCode, isDay)
-            views.setImageViewResource(R.id.widget_icon, iconRes)
+            views.setRemoteAdapter(R.id.widget_list_view, intent)
+            views.setEmptyView(R.id.widget_list_view, R.id.widget_empty_view)
 
-            // 3. Pending Intent to Open App
-            val intent = Intent(context, MainActivity::class.java)
+            // 3. Pending Intent Template for List Items (Open App)
+            val appIntent = Intent(context, MainActivity::class.java)
             val pendingIntent = PendingIntent.getActivity(
                 context, 
                 0, 
-                intent, 
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                appIntent, 
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             )
-            views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
+            views.setPendingIntentTemplate(R.id.widget_list_view, pendingIntent)
 
             // 4. Update
             appWidgetManager.updateAppWidget(appWidgetId, views)
